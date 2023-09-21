@@ -60,6 +60,8 @@ struct Lowering {
   nix::ExprLambda *lowerFunction(const syntax::Function *Fn);
   nix::Formal lowerFormal(const syntax::Formal &Formal);
   nix::AttrPath lowerAttrPath(const syntax::AttrPath &Path);
+  nix::Expr *lowerOp(const syntax::Node *Op);
+  nix::ExprCall *lowerBinaryOp(const const std::string &FnName);
 };
 
 } // namespace nixd

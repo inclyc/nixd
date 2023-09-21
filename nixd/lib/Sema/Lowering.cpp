@@ -381,6 +381,51 @@ void ExprAttrsBuilder::addInherited(const syntax::InheritedAttribute &IA) {
   }
 }
 
+nix::Expr *Lowering::lowerOp(const syntax::Node *Op) {
+  if (!Op)
+    return nullptr;
+  auto GenBinaryCall = [this](nix::PosIdx Begin, syntax::Node *LHS,
+                              syntax::Node *RHS,
+                              const std::string &FnName) -> nix::ExprCall * {
+    auto *NixExprVarFn =
+        Ctx.Pool.record(new nix::ExprVar(STable.create(FnName)));
+    return Ctx.Pool.record(
+        new nix::ExprCall(Begin, NixExprVarFn, {lowerOp(LHS), lowerOp(RHS)}));
+  };
+  switch (Op->getKind()) {
+  case Node::NK_OpNot: {
+    const auto *OpNot = dynamic_cast<const syntax::OpNot *>(Op);
+    return Ctx.Pool.record(new nix::ExprOpNot(lowerOp(OpNot->Body)));
+  }
+  case Node::NK_OpNegate: {
+    const auto *OpNegate = dynamic_cast<const syntax::OpNegate *>(Op);
+    auto *NixExprVarSub =
+        Ctx.Pool.record(new nix::ExprVar(STable.create("__sub"))); // TODO: Pos
+    return Ctx.Pool.record(new nix::ExprCall(
+        OpNegate->Range.Begin, NixExprVarSub, {lowerOp(OpNegate->Body)}));
+  }
+  case Node::NK_OpEq: {
+    const auto *OpEq = dynamic_cast<const syntax::OpEq *>(Op);
+    return Ctx.Pool.record( // TODO: Pos
+        new nix::ExprOpEq(lowerOp(OpEq->LHS), lowerOp(OpEq->RHS)));
+  }
+  case Node::NK_OpNEq: {
+    const auto *OpNEq = dynamic_cast<const syntax::OpNEq *>(Op);
+    return Ctx.Pool.record( // TODO: Pos
+        new nix::ExprOpEq(lowerOp(OpNEq->LHS), lowerOp(OpNEq->RHS)));
+  }
+  case Node::NK_OpLe: {
+    const auto *OpLe = dynamic_cast<const syntax::OpLe *>(Op);
+    return GenBinaryCall(OpLe->Range.Begin, OpLe->LHS, OpLe->RHS, "__lessThan");
+  }
+  case Node::NK_OpGe: {
+    const auto *OpGe = dynamic_cast<const syntax::OpGe *>(Op);
+    return GenBinaryCall(OpGe->Range.Begin, OpGe->RHS, OpGe->LHS, "__lessThan");
+  }
+  }
+  return nullptr;
+}
+
 nix::Expr *Lowering::lower(const syntax::Node *Root) {
   if (!Root)
     return nullptr;
@@ -444,6 +489,22 @@ nix::Expr *Lowering::lower(const syntax::Node *Root) {
     auto *NixIf =
         Ctx.Pool.record(new nix::ExprIf(If->Range.Begin, Cond, Then, Else));
     return NixIf;
+  }
+  case Node::NK_OpEq:
+  case Node::NK_OpNEq:
+  case Node::NK_OpLe:
+  case Node::NK_OpGe:
+  case Node::NK_OpGeq:
+  case Node::NK_OpAnd:
+  case Node::NK_OpOr:
+  case Node::NK_OpImpl:
+  case Node::NK_OpUpdate:
+  case Node::NK_OpAdd:
+  case Node::NK_OpSub:
+  case Node::NK_OpMul:
+  case Node::NK_OpDiv:
+  case Node::NK_OpConcatLists: {
+    return lowerOp(Root);
   }
   }
 
